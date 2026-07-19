@@ -1,0 +1,256 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\ProdukJasa;
+use App\Models\StokBarang;
+use App\Models\Transaksi;
+use App\Models\TransaksiDetail;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
+
+class TransaksiController extends Controller
+{
+    public function index(Request $request)
+    {
+        $search = $request->get('search');
+    
+        $produkJasa = ProdukJasa::with('stokBarang')->get();
+    
+        $transaksi = Transaksi::with(['details.produkJasa', 'user'])
+            ->when($search, function ($query) use ($search) {
+                $query->where('kode_transaksi', 'like', "%{$search}%")
+                      ->orWhere('nama_pembeli', 'like', "%{$search}%");
+            })
+            ->latest() 
+            ->paginate(20)
+            ->appends(['search' => $search, 'tab' => 'riwayat']);
+    
+        $today = Carbon::today();
+        $logbook = \App\Models\Logbook::where('tanggal', $today)->first();
+        $hasStartedLogbook = $logbook && in_array($logbook->status, ['aktif', 'shift_1_selesai']);
+
+        return view('operator.transaksi.index', compact('produkJasa', 'transaksi', 'search', 'hasStartedLogbook'));
+    }
+
+    public function store(Request $request)
+    {   
+        $today = Carbon::today();
+        $logbook = \App\Models\Logbook::where('tanggal', $today)->first();
+        $hasStartedLogbook = $logbook && in_array($logbook->status, ['aktif', 'shift_1_selesai']);
+
+        if (!$hasStartedLogbook) {
+            return $request->expectsJson() || $request->ajax()
+                ? response()->json([
+                    'success' => false,
+                    'message' => 'Hari operasional belum dimulai atau sudah ditutup. Anda tidak dapat melakukan transaksi POS sekarang.'
+                ], 403)
+                : redirect()->back()->with('error', 'Hari operasional belum dimulai atau sudah ditutup. Anda tidak dapat melakukan transaksi POS sekarang.');
+        }
+
+        if ($request->has('cart') || $request->isJson()) {
+            $cartData = $request->input('cart');
+            if (is_string($cartData)) {
+                $cartData = json_decode($cartData, true);
+            }
+
+            if (empty($cartData)) {
+                return $request->expectsJson() || $request->ajax()
+                    ? response()->json(['success' => false, 'message' => 'Keranjang kosong.'], 422)
+                    : redirect()->back()->with('error', 'Keranjang kosong.');
+            }
+
+            $namaPembeli = $request->input('nama_pembeli') ?? 'Umum';
+            $jenisPelanggan = $request->input('jenis_pelanggan') ?? 'umum';
+            $nomorKamar = $request->input('nomor_kamar');
+            $nomorWa = $request->input('nomor_wa');
+            $statusPembayaran = $request->input('status_pembayaran') ?? 'belum_lunas';
+            $tanggalSelesai = $request->input('tanggal_selesai');
+
+            $transaksi = DB::transaction(function () use ($cartData, $namaPembeli, $jenisPelanggan, $nomorKamar, $nomorWa, $statusPembayaran, $tanggalSelesai) {
+                // Generate kode transaksi POS
+                $kodeTransaksi = 'POS-' . strtoupper(Str::random(6));
+                $userId = Auth::id();
+
+                // Simpan transaksi utama terlebih dahulu dengan total 0
+                $transaksi = Transaksi::create([
+                    'kode_transaksi' => $kodeTransaksi,
+                    'tanggal'        => now(),
+                    'nama_pembeli'   => $namaPembeli,
+                    'jenis_pelanggan'=> $jenisPelanggan,
+                    'nomor_kamar'    => $nomorKamar,
+                    'nomor_wa'       => $nomorWa,
+                    'status_pembayaran'=> $statusPembayaran,
+                    'tanggal_selesai'=> $tanggalSelesai ? Carbon::parse($tanggalSelesai) : null,
+                    'status_laundry' => 'diterima',
+                    'total'          => 0,
+                    'user_id'        => $userId,
+                ]);
+
+                $total = 0;
+
+                foreach ($cartData as $item) {
+                    $produk = ProdukJasa::findOrFail($item['produk_jasa_id']);
+                    $subtotal = $produk->harga * $item['jumlah'];
+                    $total += $subtotal;
+
+                    // Simpan detail transaksi
+                    TransaksiDetail::create([
+                        'transaksi_id'    => $transaksi->id,
+                        'produk_jasa_id'  => $produk->id,
+                        'jumlah'          => $item['jumlah'],
+                        'harga'           => $produk->harga,
+                        'subtotal'        => $subtotal
+                    ]);
+
+                    // Kurangi stok jika jenis produk
+                    if ($produk->jenis === 'produk' && $produk->stok_barang_id) {
+                        $stokBarang = StokBarang::find($produk->stok_barang_id);
+                        if ($stokBarang) {
+                            $stokBarang->stok = max(0, $stokBarang->stok - $item['jumlah']);
+                            $stokBarang->save();
+                        }
+                    }
+                }
+
+                // Update total transaksi
+                $transaksi->update(['total' => $total]);
+                return $transaksi;
+            });
+
+            if ($request->expectsJson() || $request->ajax()) {
+                $transaksi->load('details.produkJasa', 'user');
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Transaksi POS berhasil disimpan.',
+                    'transaksi_id' => $transaksi->id,
+                    'wa_url' => $transaksi->getWaUrl()
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Transaksi POS berhasil disimpan.');
+        }
+
+        // Fallback untuk single transaksi lama
+        $request->validate([
+            'produk_jasa_id' => 'required|exists:produk_jasa,id',
+            'jumlah'         => 'required|numeric|min:0.01',
+            'nama_pembeli'   => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request) {
+            $produk = ProdukJasa::findOrFail($request->produk_jasa_id);
+
+            // Tentukan prefix kode transaksi
+            $prefix = $produk->jenis === 'produk' ? 'PRX' : 'JRX';
+            $kodeTransaksi = $prefix . '-' . strtoupper(Str::random(6));
+
+            // Hitung total harga
+            $total = $produk->harga * $request->jumlah;
+            $userId = Auth::id(); // Ambil ID user yang sedang login.
+
+            // Simpan transaksi
+            $transaksi = Transaksi::create([
+                'kode_transaksi' => $kodeTransaksi,
+                'tanggal'        => now(),
+                'nama_pembeli'   => $request->nama_pembeli ?? 'Umum',
+                'jenis_pelanggan'=> 'umum',
+                'status_pembayaran'=> 'lunas',
+                'status_laundry' => 'diterima',
+                'total'          => $total,
+                'user_id'        => $userId, // user yang login
+            ]);
+
+            // Simpan detail transaksi
+            TransaksiDetail::create([
+                'transaksi_id'    => $transaksi->id,
+                'produk_jasa_id'  => $produk->id,
+                'jumlah'          => $request->jumlah,
+                'harga'           => $produk->harga,
+                'subtotal'        => $total
+            ]);
+
+            // Kurangi stok jika jenis produk
+            if ($produk->jenis === 'produk' && $produk->stok_barang_id) {
+                $stokBarang = StokBarang::find($produk->stok_barang_id);
+                if ($stokBarang) {
+                    $stokBarang->stok = max(0, $stokBarang->stok - $request->jumlah);
+                    $stokBarang->save();
+                }
+            }
+        });
+
+        return redirect()->back()->with('success', 'Transaksi berhasil disimpan.');
+    }
+
+    public function updateStatus(Request $request, $id)
+    {
+        $request->validate([
+            'status_laundry' => 'sometimes|string|in:diterima,proses,selesai,diambil',
+            'status_pembayaran' => 'sometimes|string|in:belum_lunas,lunas',
+        ]);
+
+        $transaksi = Transaksi::findOrFail($id);
+        $oldStatus = $transaksi->status_laundry;
+        $transaksi->update($request->only(['status_laundry', 'status_pembayaran']));
+
+        $waSelesaiUrl = null;
+        if ($request->status_laundry === 'selesai' && $oldStatus !== 'selesai' && !empty($transaksi->nomor_wa)) {
+            $waSelesaiUrl = $transaksi->getWaSelesaiUrl();
+        }
+
+        if ($waSelesaiUrl) {
+            return redirect()->back()
+                ->with('success', 'Status transaksi berhasil diperbarui.')
+                ->with('wa_selesai_url', $waSelesaiUrl);
+        }
+
+        return redirect()->back()->with('success', 'Status transaksi berhasil diperbarui.');
+    }
+
+    public function destroy($id)
+    {
+        $transaksi = Transaksi::with('details')->findOrFail($id);
+
+        // Validasi operator: Hanya pembuat transaksi di hari yang sama yang bisa menghapus
+        if ($transaksi->user_id !== Auth::id()) {
+            return redirect()->back()->with('error', 'Anda tidak diperbolehkan menghapus transaksi milik operator lain.');
+        }
+
+        if (!$transaksi->created_at->isToday()) {
+            return redirect()->back()->with('error', 'Anda tidak diperbolehkan menghapus transaksi dari hari operasional sebelumnya.');
+        }
+
+        foreach ($transaksi->details as $detail) {
+            // Ambil produk_jasa terkait
+            $produk = ProdukJasa::find($detail->produk_jasa_id);
+
+            if ($produk && $produk->jenis === 'produk') {
+                // Jika produk terhubung ke stok_barang, kembalikan stoknya juga
+                if ($produk->stok_barang_id) {
+                    $stokBarang = StokBarang::find($produk->stok_barang_id);
+                    if ($stokBarang) {
+                        $stokBarang->stok += $detail->jumlah;
+                        $stokBarang->save();
+                    }
+                }
+            }
+        }
+
+        // Hapus transaksi (Laravel akan otomatis hapus details jika relasi onDelete cascade)
+        $transaksi->delete();
+
+        return redirect()->back()->with('success', 'Transaksi berhasil dihapus dan stok dikembalikan.');
+    }
+
+    public function printNota($id)
+    {
+        $transaksi = Transaksi::with(['details.produkJasa', 'user'])->findOrFail($id);
+        $pengaturan = \App\Models\Pengaturan::first();
+
+        return view('shared.transaksi.print', compact('transaksi', 'pengaturan'));
+    }
+}
