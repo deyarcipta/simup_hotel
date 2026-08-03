@@ -6,8 +6,8 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between">
-                <h5>Daftar Stok Barang</h5>
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0">Daftar Stok Barang</h5>
                 <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCreate">
                     <i class="bx bx-plus"></i> Tambah Stok
                 </button>

@@ -4,8 +4,8 @@
 @section('content')
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5>Kelola User</h5>
-        <div class="d-flex gap-2">
+        <h5 class="mb-0">Kelola User</h5>
+        <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('kelola-user.download-sample') }}" class="btn btn-info btn-sm">
                 <i class="bx bx-download me-1"></i> Contoh Excel
             </a>

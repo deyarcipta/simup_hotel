@@ -7,7 +7,7 @@
     <div class="col-12">
         {{-- Card Utama --}}
         <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <h5 class="mb-0">Daftar Pengeluaran Lain</h5>
                 <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCreate">
                     <i class="bx bx-plus"></i> Tambah Pengeluaran

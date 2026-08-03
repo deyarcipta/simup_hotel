@@ -27,14 +27,14 @@
 <div class="row">
     <div class="col-12">
         {{-- Navigation Tabs --}}
-        <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+        <ul class="nav nav-pills mb-3 flex-nowrap overflow-x-auto pb-1" id="pills-tab" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="pills-kasir-tab" data-bs-toggle="pill" data-bs-target="#pills-kasir" type="button" role="tab" aria-controls="pills-kasir" aria-selected="true">
+                <button class="nav-link active text-nowrap" id="pills-kasir-tab" data-bs-toggle="pill" data-bs-target="#pills-kasir" type="button" role="tab" aria-controls="pills-kasir" aria-selected="true">
                     <i class="bx bx-calculator me-1"></i> Mesin Kasir POS
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="pills-riwayat-tab" data-bs-toggle="pill" data-bs-target="#pills-riwayat" type="button" role="tab" aria-controls="pills-riwayat" aria-selected="false">
+                <button class="nav-link text-nowrap" id="pills-riwayat-tab" data-bs-toggle="pill" data-bs-target="#pills-riwayat" type="button" role="tab" aria-controls="pills-riwayat" aria-selected="false">
                     <i class="bx bx-history me-1"></i> Pelacakan Cucian (Riwayat)
                 </button>
             </li>
@@ -55,7 +55,7 @@
                             </div>
                             
                             {{-- Filter Kategori --}}
-                            <div class="px-4 pb-3">
+                            <div class="px-3 px-sm-4 pb-3">
                                 <div class="d-flex gap-2 flex-wrap">
                                     <button class="btn btn-xs btn-outline-primary active filter-btn" data-filter="semua">Semua</button>
                                     <button class="btn btn-xs btn-outline-primary filter-btn" data-filter="jasa">Jasa Laundry</button>
@@ -64,7 +64,7 @@
                             </div>
 
                             <div class="card-body pt-0">
-                                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3 etalase-grid" style="max-height: 580px; overflow-y: auto; padding: 5px;">
+                                <div class="row row-cols-2 row-cols-sm-2 row-cols-md-3 g-2 g-sm-3 etalase-grid" style="max-height: 580px; overflow-y: auto; padding: 5px;">
                                     @foreach($produkJasa as $item)
                                         @php
                                             $stok = $item->jenis === 'produk' ? ($item->stokBarang?->stok ?? 0) : null;
@@ -76,16 +76,16 @@
                                              data-harga="{{ $item->harga }}" 
                                              data-jenis="{{ $item->jenis }}"
                                              data-stok="{{ $stok ?? 99999 }}">
-                                             <div class="card h-100 border rounded-3 p-3 text-center position-relative etalase-card shadow-sm cursor-pointer {{ $isOutOfStock ? 'opacity-50 bg-light' : '' }}" 
+                                             <div class="card h-100 border rounded-3 p-2 p-sm-3 text-center position-relative etalase-card shadow-sm cursor-pointer {{ $isOutOfStock ? 'opacity-50 bg-light' : '' }}" 
                                                  style="transition: all 0.2s;"
                                                  onclick="{{ !$isOutOfStock ? 'addToCart('.$item->id.')' : '' }}">
                                                 
                                                 {{-- Badge Jenis --}}
-                                                <span class="badge position-absolute top-0 start-50 translate-middle-y {{ $item->jenis === 'jasa' ? 'bg-info' : 'bg-success' }}" style="font-size: 0.7rem;">
+                                                <span class="badge position-absolute top-0 start-50 translate-middle-y {{ $item->jenis === 'jasa' ? 'bg-info' : 'bg-success' }}" style="font-size: 0.65rem;">
                                                     {{ $item->jenis === 'jasa' ? 'Layanan Jasa' : 'Produk' }}
                                                 </span>
                                                 
-                                                <div class="mt-2 mb-1 fw-bold text-dark" title="{{ $item->nama }}" style="font-size: 0.9rem; line-height: 1.2; min-height: 2.4em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                                <div class="mt-3 mb-1 fw-bold text-dark" title="{{ $item->nama }}" style="font-size: 0.85rem; line-height: 1.2; min-height: 2.4em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
                                                     {{ $item->nama }}
                                                 </div>
                                                 
